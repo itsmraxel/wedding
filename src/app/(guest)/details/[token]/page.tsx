@@ -143,8 +143,8 @@ function DetailsForm({
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#fbfbfa] p-6">
-      <div className="w-full max-w-sm rounded-md border bg-white p-8 text-center shadow-sm">
+    <div className="flex min-h-screen items-center justify-center bg-background p-6">
+      <div className="w-full max-w-sm rounded-md border bg-card p-8 text-center shadow-sm">
         {children}
       </div>
     </div>

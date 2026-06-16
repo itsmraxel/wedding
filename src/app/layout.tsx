@@ -20,7 +20,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={cn("h-full antialiased font-sans", inter.variable)}>
+    <html
+      lang="en"
+      className={cn("dark h-full antialiased font-sans", inter.variable)}
+      style={{ colorScheme: "dark" }}
+      suppressHydrationWarning
+    >
       <body className="min-h-full">
         <Providers>{children}</Providers>
       </body>

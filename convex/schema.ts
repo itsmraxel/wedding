@@ -73,6 +73,9 @@ export default defineSchema({
     groupId: v.optional(v.id("groups")), // undefined = everyone
     eventKey: v.optional(eventKey), // context for {table} / {event}
     sendAt: v.number(),
+    // When true, firing sends every queued message automatically via the
+    // Kapso WhatsApp API instead of leaving them for manual wa.me sending.
+    autoSend: v.optional(v.boolean()),
     status: v.union(
       v.literal("scheduled"),
       v.literal("due"), // fired: per-recipient messages are queued on the Messages page
@@ -88,9 +91,17 @@ export default defineSchema({
     body: v.string(), // resolved message text
     eventKey: v.optional(eventKey),
     channel: v.union(v.literal("wa_link"), v.literal("kapso")),
-    status: v.union(v.literal("pending"), v.literal("sent")),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("sending"), // handed to Kapso, awaiting the API response
+      v.literal("sent"),
+      v.literal("failed") // Kapso/WhatsApp rejected it (see `error`)
+    ),
     createdAt: v.number(),
     scheduledMessageId: v.optional(v.id("scheduledMessages")),
+    // WhatsApp message id returned by Kapso on a successful auto-send.
+    providerMessageId: v.optional(v.string()),
+    error: v.optional(v.string()), // failure reason from the last send attempt
     openedAt: v.optional(v.number()), // guest opened their personal link
     repliedAt: v.optional(v.number()), // guest chose a wedding / submitted the form
   })

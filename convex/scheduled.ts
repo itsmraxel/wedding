@@ -52,7 +52,7 @@ async function queueSendsFor(
       contactId: contact._id,
       body: "",
       eventKey: campaign.eventKey,
-      channel: "wa_link",
+      channel: campaign.autoSend ? "kapso" : "wa_link",
       status: "pending",
       createdAt: Date.now(),
       scheduledMessageId: campaign._id,
@@ -93,6 +93,7 @@ export const scheduleMessage = mutation({
     groupId: v.optional(v.id("groups")),
     eventKey: v.optional(eventKey),
     sendAt: v.number(),
+    autoSend: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     if (args.sendAt <= Date.now()) {
@@ -158,6 +159,13 @@ export const fire = internalMutation({
 
     await queueSendsFor(ctx, msg, recipients);
     await ctx.db.patch(id, { status: "due" });
+
+    // Auto-send campaigns hand the whole queue straight to Kapso.
+    if (msg.autoSend) {
+      await ctx.scheduler.runAfter(0, internal.kapso.sendCampaign, {
+        scheduledMessageId: id,
+      });
+    }
   },
 });
 
@@ -203,10 +211,16 @@ export const nudge = mutation({
       groupId: original.groupId,
       eventKey: original.eventKey,
       sendAt: Date.now(),
+      autoSend: original.autoSend,
       status: "due",
     });
     const campaign = await ctx.db.get(nudgeId);
     await queueSendsFor(ctx, campaign!, recipients);
+    if (original.autoSend) {
+      await ctx.scheduler.runAfter(0, internal.kapso.sendCampaign, {
+        scheduledMessageId: nudgeId,
+      });
+    }
     return { queued: recipients.length };
   },
 });

@@ -2,6 +2,7 @@
 
 import { ReactNode, useEffect, useMemo } from "react";
 import { ConvexProvider, ConvexReactClient, useMutation } from "convex/react";
+import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import { api } from "../../convex/_generated/api";
 
@@ -40,5 +41,14 @@ function ConvexShell({ children }: { children: ReactNode }) {
 }
 
 export function Providers({ children }: { children: ReactNode }) {
-  return <ConvexShell>{children}</ConvexShell>;
+  return (
+    <ThemeProvider
+      attribute="class"
+      defaultTheme="dark"
+      forcedTheme="dark"
+      enableSystem={false}
+    >
+      <ConvexShell>{children}</ConvexShell>
+    </ThemeProvider>
+  );
 }

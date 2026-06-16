@@ -31,7 +31,7 @@ function GuideInner() {
   const activities = (items ?? []).filter((i) => i.kind === "activity");
 
   return (
-    <div className="min-h-screen bg-[#fbfbfa] p-6">
+    <div className="min-h-screen bg-background p-6">
       <div className="mx-auto max-w-lg py-8">
         <h1 className="mb-1 text-center text-2xl font-semibold">
           Your guide to the celebrations 🎉
@@ -42,7 +42,7 @@ function GuideInner() {
         </p>
 
         {items !== undefined && items.length === 0 && (
-          <p className="rounded-md border border-dashed bg-white p-8 text-center text-sm font-light text-muted-foreground">
+          <p className="rounded-md border border-dashed bg-card p-8 text-center text-sm font-light text-muted-foreground">
             The couple hasn&apos;t added suggestions yet — check back soon!
           </p>
         )}
@@ -57,7 +57,7 @@ function GuideInner() {
                 <h2 className="mb-3 flex items-center gap-2 text-sm font-medium">
                   <Icon className="size-4" strokeWidth={1.5} /> {title}
                 </h2>
-                <div className="overflow-hidden rounded-md border bg-white">
+                <div className="overflow-hidden rounded-md border bg-card">
                   {list.map((item) => (
                     <div
                       key={item._id}

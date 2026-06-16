@@ -137,6 +137,14 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  /* Functional event colors — brighter ink on dark tinted chips */
+  --traditional: #e0915a;
+  --traditional-bg: #3a2a1a;
+  --white-wedding: #6fb3d4;
+  --white-wedding-bg: #15303d;
+  --both: #b48ad6;
+  --both-bg: #2c2238;
 }
 
 @layer base {

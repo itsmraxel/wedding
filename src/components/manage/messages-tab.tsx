@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import {
   AlertTriangle,
   BellRing,
@@ -10,10 +10,13 @@ import {
   ChevronDown,
   ChevronRight,
   ExternalLink,
+  Loader2,
   Plus,
+  RotateCw,
   Send,
   Trash2,
   X,
+  Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
@@ -21,6 +24,7 @@ import { Id } from "../../../convex/_generated/dataModel";
 import { ConfirmButton } from "@/components/confirm-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -128,6 +132,7 @@ function ScheduleDialog({
   const [groupId, setGroupId] = useState<string>("everyone");
   const [eventChoice, setEventChoice] = useState<string>("none");
   const [sendAt, setSendAt] = useState("");
+  const [autoSend, setAutoSend] = useState(true);
   const [body, setBody] = useState(KIND_TEMPLATES.invite.body);
 
   const pickKind = (k: MessageKind) => {
@@ -156,6 +161,7 @@ function ScheduleDialog({
         eventKey:
           eventChoice === "none" ? undefined : (eventChoice as EventKey),
         sendAt: ts,
+        autoSend,
       });
       toast.success(
         `"${name.trim()}" scheduled for ${new Date(ts).toLocaleString()}.`
@@ -250,6 +256,23 @@ function ScheduleDialog({
               onChange={(e) => setSendAt(e.target.value)}
             />
           </div>
+          <label className="flex cursor-pointer items-start gap-2.5 rounded-md border p-3">
+            <Checkbox
+              checked={autoSend}
+              onCheckedChange={(v) => setAutoSend(v === true)}
+              className="mt-0.5"
+            />
+            <div className="grid gap-0.5">
+              <span className="text-sm font-normal">
+                Send automatically via WhatsApp
+              </span>
+              <span className="text-xs font-light text-muted-foreground">
+                At the scheduled time, every message goes out through the
+                WhatsApp Business API — no per-guest tapping. Leave off to queue
+                them for manual sending instead.
+              </span>
+            </div>
+          </label>
           <div className="grid gap-1.5">
             <Label className="text-xs font-light">Message</Label>
             <Textarea
@@ -282,14 +305,53 @@ function DueQueue({
   const sends = useQuery(api.scheduled.dueSends, { scheduledMessageId });
   const markSent = useMutation(api.sends.markSent);
   const unmarkSent = useMutation(api.sends.unmarkSent);
+  const sendBatch = useAction(api.kapso.sendBatch);
+  const [sending, setSending] = useState(false);
   if (sends === undefined) return null;
 
-  const pending = sends.filter((s) => s.status === "pending");
-  const done = sends.filter((s) => s.status === "sent");
+  // pending/failed = still to go out; sending = in flight; sent = done.
+  const order = { pending: 0, sending: 1, failed: 2, sent: 3 } as const;
+  const rows = [...sends].sort((a, b) => order[a.status] - order[b.status]);
+  const unsent = sends.filter(
+    (s) => s.status === "pending" || s.status === "failed"
+  );
+
+  const sendAll = async () => {
+    setSending(true);
+    try {
+      const result = await sendBatch({ sendIds: unsent.map((s) => s._id) });
+      if (result.failed === 0) {
+        toast.success(`Sent ${result.sent} on WhatsApp.`);
+      } else {
+        toast.error(
+          `${result.sent} sent, ${result.failed} failed. Check the failed rows.`
+        );
+      }
+    } catch {
+      toast.error("Couldn't reach WhatsApp. Check your Kapso settings.");
+    } finally {
+      setSending(false);
+    }
+  };
 
   return (
     <div className="mt-1 overflow-hidden rounded-md border">
-      {[...pending, ...done].map((send) => (
+      {unsent.length > 0 && (
+        <div className="flex items-center justify-between gap-3 border-b bg-muted/30 px-4 py-2.5">
+          <span className="text-xs font-light text-muted-foreground">
+            {unsent.length} still to send
+          </span>
+          <Button size="sm" onClick={sendAll} disabled={sending}>
+            {sending ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Zap className="size-3.5" />
+            )}
+            Send all via WhatsApp
+          </Button>
+        </div>
+      )}
+      {rows.map((send) => (
         <div
           key={send._id}
           className={cn(
@@ -300,7 +362,9 @@ function DueQueue({
           <div className="min-w-0">
             <p className="text-sm font-normal">{send.contactName}</p>
             <p className="truncate text-xs font-light text-muted-foreground">
-              {send.body}
+              {send.status === "failed" && send.error
+                ? send.error
+                : send.body}
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -321,6 +385,23 @@ function DueQueue({
               >
                 <Check className="size-3" /> sent
               </Badge>
+            ) : send.status === "sending" ? (
+              <Badge
+                variant="outline"
+                className="rounded-sm border-0 bg-muted font-light text-muted-foreground"
+              >
+                <Loader2 className="size-3 animate-spin" /> sending
+              </Badge>
+            ) : send.status === "failed" ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="font-light text-destructive"
+                onClick={() => void sendBatch({ sendIds: [send._id] })}
+                title={send.error ?? "Send failed"}
+              >
+                <RotateCw className="size-3.5" /> Retry
+              </Button>
             ) : (
               <SendActions
                 phone={send.phone}
@@ -394,8 +475,17 @@ function ScheduledSection({
                       <span className="w-3.5 shrink-0" />
                     )}
                     <div className="min-w-0">
-                      <p className="text-sm font-normal">
+                      <p className="flex items-center text-sm font-normal">
                         {c.name}
+                        {c.autoSend && (
+                          <Badge
+                            variant="outline"
+                            className="ml-2 gap-1 rounded-sm border-0 bg-muted px-1.5 font-light text-muted-foreground"
+                            title="Sends automatically via WhatsApp at the scheduled time"
+                          >
+                            <Zap className="size-2.5" /> auto
+                          </Badge>
+                        )}
                         <span className="ml-2 text-xs font-light text-muted-foreground">
                           {KIND_TEMPLATES[c.kind as MessageKind].label} ·{" "}
                           {c.groupName} ·{" "}
@@ -514,6 +604,7 @@ function SendNow() {
   const logSends = useMutation(api.sends.logSends);
   const markSent = useMutation(api.sends.markSent);
   const unmarkSent = useMutation(api.sends.unmarkSent);
+  const sendBatch = useAction(api.kapso.sendBatch);
 
   const [audience, setAudience] = useState<string>("everyone");
   const [eventChoice, setEventChoice] = useState<string>("traditional");
@@ -521,7 +612,44 @@ function SendNow() {
   const [skipped, setSkipped] = useState<Set<string>>(new Set());
   const [generated, setGenerated] = useState<GeneratedRow[] | null>(null);
   const [sentIds, setSentIds] = useState<Set<string>>(new Set());
+  const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
+  const [apiSending, setApiSending] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Push every not-yet-sent generated message through the WhatsApp API at once.
+  const sendAllViaApi = async () => {
+    if (!generated) return;
+    const targets = generated.filter((r) => !sentIds.has(r.sendId));
+    if (targets.length === 0) return;
+    setApiSending(true);
+    try {
+      const result = await sendBatch({ sendIds: targets.map((r) => r.sendId) });
+      setSentIds((prev) => {
+        const next = new Set(prev);
+        for (const r of result.results) if (r.ok) next.add(r.sendId);
+        return next;
+      });
+      setFailedIds((prev) => {
+        const next = new Set(prev);
+        for (const r of result.results) {
+          if (r.ok) next.delete(r.sendId);
+          else next.add(r.sendId);
+        }
+        return next;
+      });
+      if (result.failed === 0) {
+        toast.success(`Sent ${result.sent} on WhatsApp.`);
+      } else {
+        toast.error(
+          `${result.sent} sent, ${result.failed} failed. Retry the red rows.`
+        );
+      }
+    } catch {
+      toast.error("Couldn't reach WhatsApp. Check your Kapso settings.");
+    } finally {
+      setApiSending(false);
+    }
+  };
 
   const eventKey: EventKey | null =
     eventChoice === "none" ? null : (eventChoice as EventKey);
@@ -595,6 +723,7 @@ function SendNow() {
     });
     setGenerated(rows.map((row, i) => ({ ...row, sendId: ids[i] })));
     setSentIds(new Set());
+    setFailedIds(new Set());
     toast.success(
       `${rows.length} ${rows.length === 1 ? "message" : "messages"} ready to send.`
     );
@@ -669,7 +798,7 @@ function SendNow() {
                       "rounded-sm border px-2 py-0.5 text-xs font-light transition-colors",
                       isSkipped
                         ? "border-transparent bg-muted text-muted-foreground line-through"
-                        : "border-[var(--traditional)]/40 bg-white"
+                        : "border-[var(--traditional)]/40 bg-card"
                     )}
                   >
                     {c.name}
@@ -723,15 +852,42 @@ function SendNow() {
 
       {generated && (
         <section className="rounded-md border bg-card p-5">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-medium">Ready to send</h2>
-            <span className="text-xs font-light text-muted-foreground">
-              {sentIds.size} of {generated.length} sent
-            </span>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-medium">Ready to send</h2>
+              <span className="text-xs font-light text-muted-foreground">
+                {sentIds.size} of {generated.length} sent
+              </span>
+            </div>
+            {sentIds.size < generated.length && (
+              <Button onClick={sendAllViaApi} disabled={apiSending}>
+                {apiSending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Zap className="size-4" />
+                )}
+                Send all via WhatsApp ({generated.length - sentIds.size})
+              </Button>
+            )}
           </div>
           <div className="overflow-hidden rounded-md border">
             {generated.map((row) => {
               const sent = sentIds.has(row.sendId);
+              const failed = !sent && failedIds.has(row.sendId);
+              const retry = async () => {
+                const result = await sendBatch({ sendIds: [row.sendId] });
+                const ok = result.results[0]?.ok;
+                if (ok) {
+                  setSentIds((prev) => new Set(prev).add(row.sendId));
+                  setFailedIds((prev) => {
+                    const next = new Set(prev);
+                    next.delete(row.sendId);
+                    return next;
+                  });
+                } else {
+                  toast.error(result.results[0]?.error ?? "Send failed.");
+                }
+              };
               return (
                 <div
                   key={row.sendId}
@@ -751,6 +907,15 @@ function SendNow() {
                       <Badge className="tone-both rounded-sm border-0 font-light">
                         <Check className="size-3" /> Sent
                       </Badge>
+                    ) : failed ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="font-light text-destructive"
+                        onClick={() => void retry()}
+                      >
+                        <RotateCw className="size-3.5" /> Retry
+                      </Button>
                     ) : (
                       <SendActions
                         phone={row.phone}
